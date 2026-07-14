@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-client/
+public/
+*.js
+*.js.map
+*.d.ts
+!.gitignore

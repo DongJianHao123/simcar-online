@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Control - Car Simulator</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #1a1a24; color: #ddd; font-family: 'Segoe UI', monospace;
+        display: flex; justify-content: center; align-items: center;
+        min-height: 100vh; padding: 20px;
+      }
+      .container {
+        background: rgba(30,30,50,0.95); border-radius: 16px;
+        padding: 32px; width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      }
+      h1 { text-align: center; font-size: 22px; color: #fff; margin-bottom: 4px; }
+      .subtitle { text-align: center; font-size: 12px; color: #888; margin-bottom: 20px; }
+
+      .section { margin-bottom: 20px; }
+      .section-title {
+        font-size: 11px; text-transform: uppercase; color: #888;
+        letter-spacing: 0.5px; margin-bottom: 8px;
+      }
+
+      /* IP Input */
+      .ip-row { display: flex; gap: 8px; }
+      .ip-row input {
+        flex: 1; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px; background: rgba(0,0,0,0.3); color: #fff;
+        font-size: 14px; font-family: monospace;
+      }
+      .ip-row input:focus { outline: none; border-color: #3b82f6; }
+
+      /* D-Pad */
+      .dpad {
+        display: grid; grid-template-columns: 1fr 1fr 1fr;
+        gap: 4px; width: fit-content; margin: 0 auto;
+      }
+      .dpad button {
+        width: 64px; height: 48px; border: none; border-radius: 8px;
+        cursor: pointer; font-size: 20px; transition: all 0.15s;
+      }
+      .btn-dir { background: rgba(59,130,246,0.2); color: #3b82f6; }
+      .btn-dir:hover { background: rgba(59,130,246,0.4); }
+      .btn-dir:active { background: rgba(59,130,246,0.6); transform: scale(0.95); }
+      .btn-stop { background: rgba(248,113,113,0.25); color: #f87171; font-size: 14px; font-weight: bold; }
+      .btn-stop:hover { background: rgba(248,113,113,0.45); }
+      .btn-stop:active { background: rgba(248,113,113,0.6); transform: scale(0.95); }
+
+      /* Action buttons */
+      .btn-row { display: flex; gap: 8px; }
+      .btn-action {
+        flex: 1; padding: 10px; border: none; border-radius: 8px;
+        cursor: pointer; font-size: 14px; transition: all 0.15s;
+      }
+      .btn-grab { background: rgba(34,197,94,0.2); color: #22c55e; }
+      .btn-grab:hover { background: rgba(34,197,94,0.4); }
+      .btn-release { background: rgba(251,191,36,0.2); color: #fbbf24; }
+      .btn-release:hover { background: rgba(251,191,36,0.4); }
+
+      /* Parameter inputs */
+      .param-row { display: flex; gap: 8px; align-items: center; }
+      .param-row label { font-size: 12px; color: #aaa; white-space: nowrap; min-width: 60px; }
+      .param-row input {
+        width: 80px; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px; background: rgba(0,0,0,0.3); color: #fff;
+        font-size: 14px; font-family: monospace; text-align: center;
+      }
+      .param-row input:focus { outline: none; border-color: #3b82f6; }
+      .param-row .unit { font-size: 11px; color: #666; min-width: 24px; }
+
+      /* Speed */
+      .speed-row { display: flex; align-items: center; gap: 8px; }
+      .speed-row label { font-size: 12px; color: #aaa; white-space: nowrap; }
+      .speed-row input[type="range"] { flex: 1; accent-color: #7af; }
+      .speed-val { font-size: 13px; color: #fff; min-width: 40px; text-align: right; font-family: monospace; }
+
+      /* Log */
+      .log {
+        background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px;
+        max-height: 150px; overflow-y: auto; font-size: 12px;
+        font-family: monospace; color: #aaa;
+      }
+      .log .entry { margin-bottom: 2px; }
+      .log .entry.success { color: #4ade80; }
+      .log .entry.error { color: #f87171; }
+
+      /* Nav */
+      .nav { text-align: center; margin-top: 16px; }
+      .nav a { color: #3b82f6; font-size: 12px; text-decoration: none; margin: 0 8px; }
+      .nav a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Car Control</h1>
+      <p class="subtitle">GET /api/control</p>
+
+      <!-- Target IP -->
+      <div class="section">
+        <div class="section-title">Target Server</div>
+        <div class="ip-row" style="margin-bottom:8px;">
+          <input type="text" id="server-ip" value="localhost:3003" placeholder="localhost:3003" />
+        </div>
+        <div class="ip-row">
+          <input type="text" id="client-id" value="" placeholder="Client ID (copy from simulator page)" />
+        </div>
+      </div>
+
+      <!-- Distance / Angle params -->
+      <div class="section">
+        <div class="section-title">Parameters</div>
+        <div class="param-row" style="margin-bottom:8px;">
+          <label>Distance (cm):</label>
+          <input type="number" id="param-distance" value="50" min="0" step="1" />
+          <span class="unit">cm</span>
+        </div>
+        <div class="param-row">
+          <label>Angle (deg):</label>
+          <input type="number" id="param-angle" value="90" min="0" max="360" step="1" />
+          <span class="unit">deg</span>
+        </div>
+      </div>
+
+      <!-- D-Pad -->
+      <div class="section">
+        <div class="section-title">Direction</div>
+        <div class="dpad">
+          <div></div>
+          <button class="btn-dir" id="btn-up" title="Forward">&#8593;</button>
+          <div></div>
+          <button class="btn-dir" id="btn-left" title="Turn Left">&#8592;</button>
+          <button class="btn-stop" id="btn-stop" title="Stop">STOP</button>
+          <button class="btn-dir" id="btn-right" title="Turn Right">&#8594;</button>
+          <div></div>
+          <button class="btn-dir" id="btn-down" title="Backward">&#8595;</button>
+          <div></div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="section">
+        <div class="section-title">Actions</div>
+        <div class="btn-row">
+          <button class="btn-action btn-grab" id="btn-grab">Grab</button>
+          <button class="btn-action btn-release" id="btn-release">Release</button>
+        </div>
+      </div>
+
+      <!-- Speed -->
+      <div class="section">
+        <div class="section-title">Speed</div>
+        <div class="speed-row">
+          <label>Speed:</label>
+          <input type="range" id="speed-slider" min="0.01" max="0.5" step="0.01" value="0.1" />
+          <span class="speed-val" id="speed-val">0.10</span>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="section">
+        <div class="section-title">Request Log</div>
+        <div class="log" id="log"><div class="entry">Ready to send commands...</div></div>
+      </div>
+
+      <!-- Nav -->
+      <div class="nav">
+        <a href="/">Simulator</a>
+        <a href="/api-docs.html">API Docs</a>
+      </div>
+    </div>
+
+    <script type="module" src="/client/test-control.ts"></script>
+  </body>
+</html>

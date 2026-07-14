@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API Docs - Car Simulator</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #1a1a24; color: #ddd; font-family: 'Segoe UI', monospace;
+        min-height: 100vh; padding: 20px;
+      }
+      .container { max-width: 900px; margin: 0 auto; }
+      h1 { font-size: 28px; color: #fff; margin-bottom: 4px; }
+      .subtitle { font-size: 13px; color: #888; margin-bottom: 32px; }
+
+      .section { margin-bottom: 32px; }
+      .section-title {
+        font-size: 20px; color: #3b82f6; border-bottom: 1px solid rgba(59,130,246,0.2);
+        padding-bottom: 8px; margin-bottom: 16px;
+      }
+
+      .endpoint {
+        background: rgba(30,30,50,0.95); border-radius: 10px;
+        padding: 20px; margin-bottom: 16px;
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+      .endpoint-header {
+        display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+      }
+      .method {
+        padding: 3px 10px; border-radius: 4px; font-size: 12px;
+        font-weight: bold; text-transform: uppercase;
+      }
+      .method.get { background: rgba(34,197,94,0.2); color: #22c55e; }
+      .method.post { background: rgba(59,130,246,0.2); color: #3b82f6; }
+      .method.ws { background: rgba(168,85,247,0.2); color: #a855f7; }
+      .path {
+        font-size: 15px; color: #fff; font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .desc { font-size: 13px; color: #aaa; margin-bottom: 12px; }
+
+      .params-title {
+        font-size: 11px; text-transform: uppercase; color: #666;
+        letter-spacing: 0.5px; margin-bottom: 6px;
+      }
+      .param-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+      .param-table th {
+        text-align: left; padding: 6px 10px; font-size: 11px;
+        color: #888; text-transform: uppercase; letter-spacing: 0.3px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      .param-table td {
+        padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
+        vertical-align: top;
+      }
+      .param-table .name { color: #7af; font-family: monospace; }
+      .param-table .type { color: #fbbf24; font-size: 11px; }
+      .param-table .required { color: #f87171; font-size: 10px; }
+
+      pre {
+        background: rgba(0,0,0,0.4); border-radius: 6px; padding: 14px;
+        font-size: 12px; overflow-x: auto; color: #ccc;
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+      pre .key { color: #7af; }
+      pre .str { color: #4ade80; }
+      pre .num { color: #fbbf24; }
+      pre .comment { color: #666; }
+
+      .nav { text-align: center; margin-top: 32px; padding-bottom: 40px; }
+      .nav a { color: #3b82f6; font-size: 13px; text-decoration: none; margin: 0 10px; }
+      .nav a:hover { text-decoration: underline; }
+
+      .toc { margin-bottom: 24px; }
+      .toc a { color: #aaa; font-size: 13px; text-decoration: none; display: inline-block; margin: 2px 12px 2px 0; }
+      .toc a:hover { color: #3b82f6; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Car Simulator API</h1>
+      <p class="subtitle">REST API &amp; WebSocket 接口文档 | 多用户隔离架构</p>
+
+      <div class="toc">
+        <a href="#arch">架构说明</a>
+        <a href="#rest">REST API</a>
+        <a href="#websocket">WebSocket</a>
+        <a href="#types">Data Types</a>
+        <a href="#scale">坐标 &amp; 比例</a>
+      </div>
+
+      <!-- ============ Architecture ============ -->
+      <div class="section" id="arch">
+        <div class="section-title">多用户隔离架构</div>
+        <p style="color:#aaa;font-size:13px;line-height:1.8;margin-bottom:12px;">
+          每个模拟器页面生成唯一的 <code style="color:#7af;">clientId</code>（格式 <code style="color:#7af;">car-xxxxxxxxx</code>），
+          通过 WebSocket 的 <b>Socket.IO Room</b> 机制实现隔离。指令和状态只在同一个 Room 内广播，不同 clientId 的小车互不干扰。
+        </p>
+        <pre><span class="comment">┌─────────────────────────────────┐
+│ 浏览器 A                        │
+│ clientId: car-abc123            │
+│ Room "car-abc123" ─── 小车 A    │
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│ 浏览器 B                        │
+│ clientId: car-xyz789            │
+│ Room "car-xyz789" ─── 小车 B    │
+└─────────────────────────────────┘
+
+REST API / WebSocket 通过 clientId 指定目标：
+  ?clientId=car-abc123  →  只操控小车 A
+  ?clientId=car-xyz789  →  只操控小车 B
+  不填 clientId         →  指令不会到达任何小车</pre>
+      </div>
+
+      <!-- ============ REST API ============ -->
+      <div class="section" id="rest">
+        <div class="section-title">REST API</div>
+
+        <!-- GET /api/control -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method get">GET</span>
+            <span class="path">/api/control</span>
+          </div>
+          <div class="desc">发送控制指令（推荐用于外部调用，匹配真实小车接口格式）</div>
+          <div class="params-title">Query Parameters</div>
+          <table class="param-table">
+            <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr>
+              <td class="name">clientId</td><td class="type">string</td><td class="required">required</td>
+              <td>目标小车 ID（从模拟器页面复制），不填则指令不会到达任何小车</td>
+            </tr>
+            <tr>
+              <td class="name">action</td><td class="type">string</td><td class="required">required</td>
+              <td>动作类型：<code>up</code> / <code>down</code> / <code>left</code> / <code>right</code> / <code>stop</code> / <code>grab</code> / <code>release</code></td>
+            </tr>
+            <tr>
+              <td class="name">speed</td><td class="type">number</td><td>optional</td>
+              <td>速度 (0.01 ~ 0.5)</td>
+            </tr>
+            <tr>
+              <td class="name">distance</td><td class="type">number</td><td>optional</td>
+              <td>移动距离（厘米），适用于 up/down。参考：小车长 20cm，distance=20 约一个车身位</td>
+            </tr>
+            <tr>
+              <td class="name">angle</td><td class="type">number</td><td>optional</td>
+              <td>转动角度（度），适用于 left/right</td>
+            </tr>
+            <tr>
+              <td class="name">time</td><td class="type">number</td><td>optional</td>
+              <td>持续时间（毫秒）</td>
+            </tr>
+          </table>
+          <div class="params-title">Examples</div>
+          <pre><span class="comment"># 控制 car-abc123 前进 20cm（约一个车身位）</span>
+GET /api/control?clientId=car-abc123&action=up&speed=0.1&distance=20
+
+<span class="comment"># 控制 car-abc123 左转 90 度</span>
+GET /api/control?clientId=car-abc123&action=left&speed=0.05&angle=90
+
+<span class="comment"># 停止</span>
+GET /api/control?clientId=car-abc123&action=stop
+
+<span class="comment"># 抓起物品</span>
+GET /api/control?clientId=car-abc123&action=grab</pre>
+          <div class="params-title">Response</div>
+          <pre>{
+  <span class="key">"success"</span>: <span class="num">true</span>,
+  <span class="key">"target"</span>: <span class="str">"car-abc123"</span>,
+  <span class="key">"command"</span>: {
+    <span class="key">"action"</span>: <span class="str">"up"</span>,
+    <span class="key">"speed"</span>: <span class="num">0.1</span>,
+    <span class="key">"distance"</span>: <span class="num">20</span>
+  }
+}</pre>
+        </div>
+
+        <!-- GET /api/car/state -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method get">GET</span>
+            <span class="path">/api/car/state?clientId=car-xxxxx</span>
+          </div>
+          <div class="desc">获取指定小车的当前状态</div>
+          <div class="params-title">Query Parameters</div>
+          <table class="param-table">
+            <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="name">clientId</td><td class="type">string</td><td>optional</td><td>目标小车 ID，默认 "default"</td></tr>
+          </table>
+          <div class="params-title">Response</div>
+          <pre>{
+  <span class="key">"x"</span>: <span class="num">0.5</span>,
+  <span class="key">"z"</span>: <span class="num">-1.2</span>,
+  <span class="key">"rotation"</span>: <span class="num">3.14</span>,
+  <span class="key">"velocity"</span>: <span class="num">0.1</span>,
+  <span class="key">"angularVelocity"</span>: <span class="num">0</span>,
+  <span class="key">"armState"</span>: <span class="str">"idle"</span>,
+  <span class="key">"hasBall"</span>: <span class="num">false</span>,
+  <span class="key">"isColliding"</span>: <span class="num">false</span>,
+  <span class="key">"grabAvailable"</span>: <span class="num">true</span>,
+  <span class="key">"ballPosition"</span>: { <span class="key">"x"</span>: <span class="num">0</span>, <span class="key">"z"</span>: <span class="num">-5</span> }
+}</pre>
+        </div>
+
+        <!-- POST /api/car/control -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method post">POST</span>
+            <span class="path">/api/car/control</span>
+          </div>
+          <div class="desc">发送控制指令（JSON Body），通过 <code>clientId</code> 指定目标小车</div>
+          <div class="params-title">Request Body</div>
+          <pre>{
+  <span class="key">"clientId"</span>: <span class="str">"car-abc123"</span>,
+  <span class="key">"action"</span>: <span class="str">"up"</span>,
+  <span class="key">"speed"</span>: <span class="num">0.1</span>,
+  <span class="key">"distance"</span>: <span class="num">20</span>,
+  <span class="key">"angle"</span>: <span class="num">90</span>
+}</pre>
+        </div>
+
+        <!-- POST /api/car/reset -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method post">POST</span>
+            <span class="path">/api/car/reset?clientId=car-xxxxx</span>
+          </div>
+          <div class="desc">重置指定小车的仿真状态（位置、速度、机械臂、球和桶的位置）</div>
+          <div class="params-title">Query Parameters</div>
+          <table class="param-table">
+            <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="name">clientId</td><td class="type">string</td><td>optional</td><td>目标小车 ID，默认 "default"</td></tr>
+          </table>
+        </div>
+
+        <!-- GET /api/car/speed -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method get">GET</span>
+            <span class="path">/api/car/speed</span>
+          </div>
+          <div class="desc">获取当前速度设置</div>
+          <div class="params-title">Response</div>
+          <pre>{
+  <span class="key">"speed"</span>: <span class="num">0.1</span>,
+  <span class="key">"turnSpeed"</span>: <span class="num">0.05</span>
+}</pre>
+        </div>
+
+        <!-- POST /api/car/speed -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method post">POST</span>
+            <span class="path">/api/car/speed</span>
+          </div>
+          <div class="desc">更新速度设置</div>
+          <div class="params-title">Request Body</div>
+          <pre>{
+  <span class="key">"speed"</span>: <span class="num">0.15</span>,
+  <span class="key">"turnSpeed"</span>: <span class="num">0.08</span>
+}</pre>
+        </div>
+      </div>
+
+      <!-- ============ WebSocket ============ -->
+      <div class="section" id="websocket">
+        <div class="section-title">WebSocket</div>
+        <p style="color:#aaa;font-size:13px;margin-bottom:16px;">
+          Namespace: <code style="color:#7af;">/car</code> &nbsp;|&nbsp;
+          Transport: <code style="color:#7af;">WebSocket</code> / <code style="color:#7af;">Polling</code>
+        </p>
+        <p style="color:#f87171;font-size:13px;margin-bottom:16px;">
+          <b>注意：</b>所有消息基于 Room 隔离。必须先发送 <code>join</code>（带 clientId）加入 Room，否则 command/state 不会到达目标。
+        </p>
+
+        <!-- join -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method ws">CLIENT</span>
+            <span class="path">emit: join</span>
+          </div>
+          <div class="desc">客户端加入房间。模拟器页面自动生成 clientId，外部控制器需提供目标 clientId。</div>
+          <pre><span class="comment">// 模拟器（自动）</span>
+socket.emit(<span class="str">'join'</span>, { <span class="key">role</span>: <span class="str">'simulator'</span>, <span class="key">clientId</span>: <span class="str">'car-abc123'</span> })
+
+<span class="comment">// 外部控制器（指定要控制的小车）</span>
+socket.emit(<span class="str">'join'</span>, { <span class="key">role</span>: <span class="str">'controller'</span>, <span class="key">clientId</span>: <span class="str">'car-abc123'</span> })</pre>
+        </div>
+
+        <!-- command -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method ws">CLIENT</span>
+            <span class="path">emit: command</span>
+          </div>
+          <div class="desc">发送控制指令（仅在当前 Room 内广播，只影响同一 clientId 的小车）</div>
+          <pre>socket.emit(<span class="str">'command'</span>, {
+  <span class="key">action</span>: <span class="str">'up'</span>,
+  <span class="key">speed</span>: <span class="num">0.1</span>,
+  <span class="key">distance</span>: <span class="num">20</span>,
+  <span class="key">angle</span>: <span class="num">90</span>
+})</pre>
+        </div>
+
+        <!-- command (receive) -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method ws">SERVER</span>
+            <span class="path">broadcast: command</span>
+          </div>
+          <div class="desc">服务端将指令广播到同一 Room 内的所有客户端（包括控制器自身）</div>
+          <pre>socket.on(<span class="str">'command'</span>, (data) => {
+  <span class="comment">// data: { action, value?, speed?, distance?, angle?, time? }</span>
+  <span class="comment">// 只有同一 clientId 的客户端能收到</span>
+})</pre>
+        </div>
+
+        <!-- state -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method ws">CLIENT</span>
+            <span class="path">emit: state</span>
+          </div>
+          <div class="desc">模拟器上报机器人状态（10Hz），广播给同一 Room 内的其他客户端</div>
+          <pre>socket.emit(<span class="str">'state'</span>, {
+  <span class="key">x</span>: <span class="num">0.5</span>,
+  <span class="key">z</span>: <span class="num">-1.2</span>,
+  <span class="key">rotation</span>: <span class="num">3.14</span>,
+  <span class="key">velocity</span>: <span class="num">0.1</span>,
+  <span class="key">angularVelocity</span>: <span class="num">0</span>,
+  <span class="key">armState</span>: <span class="str">'idle'</span>,
+  <span class="key">hasBall</span>: <span class="num">false</span>,
+  <span class="key">isColliding</span>: <span class="num">false</span>,
+  <span class="key">grabAvailable</span>: <span class="num">true</span>,
+  <span class="key">ballPosition</span>: { <span class="key">x</span>: <span class="num">0</span>, <span class="key">z</span>: <span class="num">-5</span> }
+})</pre>
+        </div>
+
+        <!-- state (receive) -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method ws">SERVER</span>
+            <span class="path">broadcast: state</span>
+          </div>
+          <div class="desc">服务端将状态广播给同一 Room 内的其他客户端（排除发送者自身）</div>
+          <pre>socket.on(<span class="str">'state'</span>, (state) => {
+  <span class="comment">// state: RobotState object</span>
+  <span class="comment">// 只收到同一 clientId 的小车状态</span>
+})</pre>
+        </div>
+      </div>
+
+      <!-- ============ Data Types ============ -->
+      <div class="section" id="types">
+        <div class="section-title">Data Types</div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="path">ControlCommand</span></div>
+          <pre>{
+  <span class="key">action</span>: <span class="str">'up' | 'down' | 'left' | 'right' | 'stop' | 'grab' | 'release' | 'setSpeed' | 'setTurnSpeed' | 'turnAngle'</span>,
+  <span class="key">value</span>?: number,
+  <span class="key">distance</span>?: number,  <span class="comment">// 厘米</span>
+  <span class="key">angle</span>?: number,     <span class="comment">// 度</span>
+  <span class="key">speed</span>?: number,
+  <span class="key">time</span>?: number       <span class="comment">// 毫秒</span>
+}</pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="path">RobotState</span></div>
+          <pre>{
+  <span class="key">x</span>: number,
+  <span class="key">z</span>: number,
+  <span class="key">rotation</span>: number,
+  <span class="key">velocity</span>: number,
+  <span class="key">angularVelocity</span>: number,
+  <span class="key">armState</span>: <span class="str">'idle' | 'picking_down' | 'picking_up' | 'holding' | 'dropping_down' | 'dropping_up'</span>,
+  <span class="key">hasBall</span>: boolean,
+  <span class="key">isColliding</span>: boolean,
+  <span class="key">grabAvailable</span>: boolean,
+  <span class="key">ballPosition</span>: { x: number, z: number } | null
+}</pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="path">SpeedSettings</span></div>
+          <pre>{
+  <span class="key">speed</span>: number,
+  <span class="key">turnSpeed</span>: number
+}</pre>
+        </div>
+      </div>
+
+      <!-- ============ Scale ============ -->
+      <div class="section" id="scale">
+        <div class="section-title">坐标 &amp; 比例换算</div>
+        <table class="param-table">
+          <tr><th>实物</th><th>仿真单位</th><th>换算</th></tr>
+          <tr><td>小车长度 20cm</td><td>1.8 单位</td><td>1cm = 0.09 单位</td></tr>
+          <tr><td>1 米</td><td>9 单位</td><td>1 单位 ≈ 11.1cm</td></tr>
+          <tr><td>地面尺寸</td><td>160×160 单位</td><td>≈ 17.8m × 17.8m</td></tr>
+          <tr><td>网格间距</td><td>9 单位</td><td>= 1m（16×16 格）</td></tr>
+        </table>
+        <p style="color:#888;font-size:12px;margin-top:8px;">
+          distance 参数单位为<b>厘米</b>。例如 distance=20 表示前进 20cm，即 20 × 0.09 = 1.8 单位 ≈ 一个车身位。
+        </p>
+      </div>
+
+      <!-- Nav -->
+      <div class="nav">
+        <a href="/">Simulator</a>
+        <a href="/test-control.html">Test Control</a>
+      </div>
+    </div>
+
+    <script type="module" src="/client/api-docs.ts"></script>
+  </body>
+</html>
