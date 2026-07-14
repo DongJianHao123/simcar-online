@@ -22,7 +22,7 @@ function log(message: string, type: 'success' | 'error' | 'info' = 'info') {
 
 // ─── Speed Slider ───
 speedSlider.addEventListener('input', () => {
-  speedVal.textContent = parseFloat(speedSlider.value).toFixed(2);
+  speedVal.textContent = parseFloat(speedSlider.value).toFixed(1);
 });
 
 // ─── Send Command ───

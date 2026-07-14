@@ -73,6 +73,34 @@
         text-decoration: none; transition: color 0.2s;
       }
       .nav-links a:hover { color: #3b82f6; }
+
+      /* Command log */
+      #cmd-log {
+        position: fixed; bottom: 16px; left: 16px; z-index: 100;
+        width: 280px; max-height: 200px; overflow-y: auto;
+        background: rgba(20, 20, 40, 0.88); border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 11px; color: #aaa; padding: 8px;
+        pointer-events: auto;
+      }
+      #cmd-log .log-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 4px; padding-bottom: 4px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      #cmd-log .log-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+      #cmd-log .log-clear {
+        background: none; border: none; color: #666; cursor: pointer; font-size: 10px;
+        padding: 1px 4px; border-radius: 3px;
+      }
+      #cmd-log .log-clear:hover { color: #fff; background: rgba(255,255,255,0.1); }
+      #cmd-log .log-entry {
+        padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+        word-break: break-all;
+      }
+      #cmd-log .log-entry .ts { color: #555; margin-right: 4px; }
+      #cmd-log .log-entry .act { color: #7aa2f7; }
+      #cmd-log .log-entry .param { color: #9ece6a; }
     </style>
   </head>
   <body>
@@ -98,6 +126,14 @@
     </div>
 
     <div class="hint">drag to orbit &bull; scroll to zoom &bull; drag ball/bucket to move</div>
+
+    <div id="cmd-log">
+      <div class="log-header">
+        <span class="log-title">Command Log</span>
+        <button class="log-clear" id="log-clear-btn">clear</button>
+      </div>
+      <div id="log-entries"></div>
+    </div>
 
     <script type="module" src="/client/main.ts"></script>
   </body>

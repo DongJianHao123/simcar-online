@@ -11,18 +11,19 @@ import {
   onCommand,
 } from './socket-client';
 
-// ─── Speed settings ───
-let speed = 0.1;
-let turnSpeed = 0.05;
+// ─── Speed settings (per-second values) ───
+let speed = 6;       // units/s (at 60fps: 0.1/frame)
+let turnSpeed = 3;   // rad/s  (at 60fps: 0.05/frame)
 
 // ─── Command state ───
-let cmdVelocity = 0;
-let cmdAngularVelocity = 0;
+let cmdVelocity = 0;       // units/s
+let cmdAngularVelocity = 0; // rad/s
 let pendingTurnAngle = 0;
 let commandActive = false;
 let lastVelocityCmdTime = 0;
 let lastAngularCmdTime = 0;
 const CMD_TIMEOUT = 200; // ms
+let lastFrameTime = 0;
 
 // ─── Distance tracking ───
 // Robot model is 1.8 units long, representing a 20cm car
@@ -47,9 +48,16 @@ function loadDebugState() {
       const saved = JSON.parse(raw);
       debugMode = saved.debugMode ?? false;
       showTrail = saved.showTrail ?? false;
-      if (saved.speed !== undefined) speed = saved.speed;
-      if (saved.turnSpeed !== undefined) turnSpeed = saved.turnSpeed;
+      if (saved.speed !== undefined) {
+        // Migrate old per-frame values (0.01-0.5) to per-second (×60)
+        speed = saved.speed < 1 ? saved.speed * 60 : saved.speed;
+      }
+      if (saved.turnSpeed !== undefined) {
+        turnSpeed = saved.turnSpeed < 1 ? saved.turnSpeed * 60 : saved.turnSpeed;
+      }
       if (saved.lightPos) lightPos = saved.lightPos;
+      // Save migrated values back
+      saveDebugState();
     }
   } catch { /* ignore */ }
 }
@@ -124,6 +132,32 @@ let cameraCtx: CanvasRenderingContext2D;
 let statusDot: HTMLElement;
 let statusText: HTMLElement;
 let copyIdBtn: HTMLElement;
+
+// ─── Command log ───
+const MAX_LOG_ENTRIES = 50;
+let logEntries: HTMLElement;
+let logClearBtn: HTMLElement;
+
+function addLogEntry(action: string, params: Record<string, unknown>) {
+  if (!logEntries) return;
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8);
+  const paramStr = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => `<span class="param">${k}=${v}</span>`)
+    .join(' ');
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="ts">${ts}</span><span class="act">${action}</span> ${paramStr}`;
+
+  logEntries.insertBefore(entry, logEntries.firstChild);
+
+  // Trim old entries
+  while (logEntries.children.length > MAX_LOG_ENTRIES) {
+    logEntries.lastChild?.remove();
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Environment Setup
@@ -209,34 +243,38 @@ let isColliding = false;
 
 function updatePhysics() {
   const now = performance.now();
+  const dt = lastFrameTime ? Math.min((now - lastFrameTime) / 1000, 0.1) : 1 / 60;
+  lastFrameTime = now;
+
   const commandActiveNow = commandActive && (now - lastVelocityCmdTime) < CMD_TIMEOUT;
   const velocityActive = commandActiveNow && (now - lastVelocityCmdTime) < CMD_TIMEOUT;
   const angularActive = commandActiveNow && (now - lastAngularCmdTime) < CMD_TIMEOUT;
 
   // Keep velocity active during distance tracking (ignore timeout)
   if (velocityActive || distanceTracking) {
-    robotState.velocity = cmdVelocity;
+    robotState.velocity = cmdVelocity * dt;
   } else if (debugMode) {
     let kv = 0;
     if (keyState['KeyW'] || keyState['ArrowUp']) kv = speed;
     if (keyState['KeyS'] || keyState['ArrowDown']) kv = -speed;
-    robotState.velocity = kv;
+    robotState.velocity = kv * dt;
   } else {
     robotState.velocity *= 0.9;
   }
 
-  if (angularActive) {
-    robotState.angularVelocity = cmdAngularVelocity;
-    pendingTurnAngle = 0;
-  } else if (pendingTurnAngle !== 0) {
-    const step = Math.sign(pendingTurnAngle) * Math.min(Math.abs(pendingTurnAngle), turnSpeed);
+  if (pendingTurnAngle !== 0) {
+    // Angle-based turn: consume pendingTurnAngle at turnSpeed rate (rad/s * dt)
+    const maxStep = turnSpeed * dt;
+    const step = Math.sign(pendingTurnAngle) * Math.min(Math.abs(pendingTurnAngle), maxStep);
     robotState.angularVelocity = step;
     pendingTurnAngle -= step;
+  } else if (angularActive) {
+    robotState.angularVelocity = cmdAngularVelocity * dt;
   } else if (debugMode) {
     let ka = 0;
     if (keyState['KeyA'] || keyState['ArrowLeft']) ka = turnSpeed;
     if (keyState['KeyD'] || keyState['ArrowRight']) ka = -turnSpeed;
-    robotState.angularVelocity = ka;
+    robotState.angularVelocity = ka * dt;
   } else {
     robotState.angularVelocity *= 0.9;
   }
@@ -455,6 +493,10 @@ function onMouseUp(_e: MouseEvent) {
 
 function handleCommand(data: { action: string; value?: number; distance?: number; angle?: number; speed?: number; time?: number }) {
   const { action, value, distance, angle } = data;
+
+  // Log the command
+  addLogEntry(action, { value, distance, angle, speed: data.speed, time: data.time });
+
   commandActive = true;
 
   // Apply speed if specified
@@ -494,7 +536,6 @@ function handleCommand(data: { action: string; value?: number; distance?: number
         const rad = (angle * Math.PI) / 180;
         pendingTurnAngle = rad;
         cmdAngularVelocity = 0;
-        lastAngularCmdTime = 0;
       } else {
         cmdAngularVelocity = turnSpeed;
         lastAngularCmdTime = performance.now();
@@ -505,7 +546,6 @@ function handleCommand(data: { action: string; value?: number; distance?: number
         const rad = -(angle * Math.PI) / 180;
         pendingTurnAngle = rad;
         cmdAngularVelocity = 0;
-        lastAngularCmdTime = 0;
       } else {
         cmdAngularVelocity = -turnSpeed;
         lastAngularCmdTime = performance.now();
@@ -540,7 +580,6 @@ function handleCommand(data: { action: string; value?: number; distance?: number
       if (typeof value === 'number') {
         pendingTurnAngle = value;
         cmdAngularVelocity = 0;
-        lastAngularCmdTime = 0;
       }
       break;
   }
@@ -926,32 +965,32 @@ function createDebugUI() {
   panel.appendChild(speedH4);
 
   const speedLabel = document.createElement('label');
-  speedLabel.textContent = `Speed: ${speed.toFixed(3)}`;
+  speedLabel.textContent = `Speed: ${speed.toFixed(1)} u/s`;
   const speedSlider = document.createElement('input');
   speedSlider.type = 'range';
-  speedSlider.min = '0.01';
-  speedSlider.max = '0.5';
-  speedSlider.step = '0.01';
+  speedSlider.min = '0.5';
+  speedSlider.max = '20';
+  speedSlider.step = '0.5';
   speedSlider.value = String(speed);
   speedSlider.addEventListener('input', () => {
     speed = parseFloat(speedSlider.value);
-    speedLabel.textContent = `Speed: ${speed.toFixed(3)}`;
+    speedLabel.textContent = `Speed: ${speed.toFixed(1)} u/s`;
     saveDebugState();
   });
   panel.appendChild(speedLabel);
   panel.appendChild(speedSlider);
 
   const turnLabel = document.createElement('label');
-  turnLabel.textContent = `TurnSpeed: ${turnSpeed.toFixed(3)}`;
+  turnLabel.textContent = `TurnSpeed: ${turnSpeed.toFixed(1)} rad/s`;
   const turnSlider = document.createElement('input');
   turnSlider.type = 'range';
-  turnSlider.min = '0.01';
-  turnSlider.max = '0.5';
-  turnSlider.step = '0.01';
+  turnSlider.min = '0.5';
+  turnSlider.max = '10';
+  turnSlider.step = '0.5';
   turnSlider.value = String(turnSpeed);
   turnSlider.addEventListener('input', () => {
     turnSpeed = parseFloat(turnSlider.value);
-    turnLabel.textContent = `TurnSpeed: ${turnSpeed.toFixed(3)}`;
+    turnLabel.textContent = `TurnSpeed: ${turnSpeed.toFixed(1)} rad/s`;
     saveDebugState();
   });
   panel.appendChild(turnLabel);
@@ -1042,6 +1081,9 @@ function init() {
   statusDot = document.getElementById('status-dot')!;
   statusText = document.getElementById('status-text')!;
   copyIdBtn = document.getElementById('copy-id-btn')!;
+  logEntries = document.getElementById('log-entries')!;
+  logClearBtn = document.getElementById('log-clear-btn')!;
+  logClearBtn.addEventListener('click', () => { logEntries.innerHTML = ''; });
 
   // Scene
   scene = createScene();
